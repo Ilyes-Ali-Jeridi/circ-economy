@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Company Dashboard - Waste Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold">Company Dashboard</h1>
+            <a href="/" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors">
+                Back to Matcher
+            </a>
+        </div>
+
+        <!-- Rest of the dashboard.html content remains exactly the same -->
+        <!-- Add Company Form -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">Add New Company</h2>
+            <form id="companyForm" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Company Name</label>
+                        <input type="text" id="companyName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Latitude</label>
+                        <input type="number" step="any" id="latitude" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Longitude</label>
+                        <input type="number" step="any" id="longitude" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                </div>
+                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Add Company</button>
+            </form>
+        </div>
+
+        <!-- Companies List -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">Companies</h2>
+            <div class="space-y-6" id="companiesList">
+                {% for company in companies %}
+                <div class="border-b border-gray-200 pb-6 company-item" data-id="{{ company.id }}">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-lg font-semibold">{{ company.name }}</h3>
+                        <button class="text-blue-600 hover:text-blue-800 toggle-details">Show Details</button>
+                    </div>
+                    
+                    <div class="hidden company-details space-y-6">
+                        <!-- Materials Needed -->
+                        <div>
+                            <h4 class="font-medium mb-2">Raw Materials Needed</h4>
+                            <div class="materials-list space-y-2"></div>
+                            <form class="add-material-form mt-4 flex gap-4">
+                                <select name="material_type" required class="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    {% for material in materials %}
+                                    <option value="{{ material }}">{{ material[8:] | replace('_', ' ') | title }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="number" name="quantity" required min="0" step="0.1" placeholder="Quantity (tons/month)" 
+                                       class="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Add Material</button>
+                            </form>
+                        </div>
+
+                        <!-- Waste Production -->
+                        <div>
+                            <h4 class="font-medium mb-2">Waste Production</h4>
+                            <div class="wastes-list space-y-2"></div>
+                            <form class="add-waste-form mt-4 flex gap-4">
+                                <select name="waste_type" required class="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    {% for material in materials %}
+                                    <option value="{{ material }}">{{ material[8:] | replace('_', ' ') | title }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="number" name="quantity" required min="0" step="0.1" placeholder="Quantity (tons/month)"
+                                       class="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Add Waste</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // The rest of the JavaScript code remains exactly the same
+        // Add Company Form Handler
+        document.getElementById('companyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const companyData = {
+                name: document.getElementById('companyName').value,
+                latitude: parseFloat(document.getElementById('latitude').value),
+                longitude: parseFloat(document.getElementById('longitude').value)
+            };
+
+            try {
+                const response = await fetch('/api/companies', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(companyData)
+                });
+
+                if (response.ok) {
+                    window.location.reload();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+
+        // Toggle Company Details
+        document.querySelectorAll('.toggle-details').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                const companyItem = e.target.closest('.company-item');
+                const detailsDiv = companyItem.querySelector('.company-details');
+                const companyId = companyItem.dataset.id;
+
+                if (detailsDiv.classList.contains('hidden')) {
+                    // Load company details
+                    try {
+                        const response = await fetch(`/api/companies/${companyId}`);
+                        const data = await response.json();
+                        
+                        // Update materials list
+                        const materialsList = detailsDiv.querySelector('.materials-list');
+                        materialsList.innerHTML = data.materials.map(m => `
+                            <div class="flex justify-between items-center bg-gray-50 p-2 rounded">
+                                <span>${m.type.replace('accepts_', '').replace(/_/g, ' ')}</span>
+                                <span>${m.quantity} tons/month</span>
+                            </div>
+                        `).join('');
+
+                        // Update wastes list
+                        const wastesList = detailsDiv.querySelector('.wastes-list');
+                        wastesList.innerHTML = data.wastes.map(w => `
+                            <div class="flex justify-between items-center bg-gray-50 p-2 rounded">
+                                <span>${w.type.replace('accepts_', '').replace(/_/g, ' ')}</span>
+                                <span>${w.quantity} tons/month</span>
+                            </div>
+                        `).join('');
+                    } catch (error) {
+                        console.error('Error:', error);
+                    }
+                }
+
+                detailsDiv.classList.toggle('hidden');
+                e.target.textContent = detailsDiv.classList.contains('hidden') ? 'Show Details' : 'Hide Details';
+            });
+        });
+
+        // Add Material Form Handler
+        document.querySelectorAll('.add-material-form').forEach(form => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const companyId = e.target.closest('.company-item').dataset.id;
+                
+                const materialData = {
+                    material_type: e.target.material_type.value,
+                    quantity: parseFloat(e.target.quantity.value)
+                };
+
+                try {
+                    const response = await fetch(`/api/companies/${companyId}/materials`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(materialData)
+                    });
+
+                    if (response.ok) {
+                        // Refresh company details
+                        e.target.closest('.company-item').querySelector('.toggle-details').click();
+                        e.target.closest('.company-item').querySelector('.toggle-details').click();
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                }
+            });
+        });
+
+        // Add Waste Form Handler
+        document.querySelectorAll('.add-waste-form').forEach(form => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const companyId = e.target.closest('.company-item').dataset.id;
+                
+                const wasteData = {
+                    waste_type: e.target.waste_type.value,
+                    quantity: parseFloat(e.target.quantity.value)
+                };
+
+                try {
+                    const response = await fetch(`/api/companies/${companyId}/wastes`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(wasteData)
+                    });
+
+                    if (response.ok) {
+                        // Refresh company details
+                        e.target.closest('.company-item').querySelector('.toggle-details').click();
+                        e.target.closest('.company-item').querySelector('.toggle-details').click();
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

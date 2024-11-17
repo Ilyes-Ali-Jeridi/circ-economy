@@ -1,0 +1,12 @@
+{
+  "name": "flask-waste-management",
+  "private": true,
+  "scripts": {
+    "start": "pip install -r requirements.txt && python app.py",
+    "dev": "pip install -r requirements.txt && python app.py"
+  },
+  "dependencies": {
+    "python-shell": "^5.0.0",
+    "leaflet": "^1.9.4"
+  }
+}

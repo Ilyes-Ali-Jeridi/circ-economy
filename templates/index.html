@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waste Management Matcher</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        #map { height: 500px; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold">Waste Management Matcher</h1>
+            <a href="/dashboard" class="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 transition-colors">
+                Go to Dashboard
+            </a>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <form id="companyForm" class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Company Name</label>
+                        <input type="text" id="companyName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Latitude</label>
+                            <input type="number" step="any" id="latitude" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Longitude</label>
+                            <input type="number" step="any" id="longitude" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Raw Materials Needed</label>
+                        <div class="mt-2 grid grid-cols-2 gap-2" id="materialsCheckboxes">
+                            {% for material in materials %}
+                            <div class="flex items-center">
+                                <input type="checkbox" id="{{ material }}" name="materials" value="{{ material }}"
+                                       class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                                <label for="{{ material }}" class="ml-2 text-sm text-gray-700">
+                                    {{ material[8:] | replace('_', ' ') | title }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Quantity (tons/month)</label>
+                        <input type="number" id="quantity" required min="0" step="0.1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+
+                    <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                        Find Matches
+                    </button>
+                </form>
+            </div>
+
+            <div id="map" class="rounded-lg shadow-md"></div>
+        </div>
+
+        <div id="results" class="mt-8 space-y-4 hidden">
+            <h2 class="text-2xl font-semibold">Matches Found</h2>
+            
+            <div id="prediction" class="bg-blue-50 p-4 rounded-lg mb-4 hidden">
+                <h3 class="text-lg font-semibold text-blue-800">Predicted Waste Flow</h3>
+                <p class="text-blue-600" id="predictionValue"></p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <h3 class="text-xl font-semibold mb-4">Nearby Dumpsters</h3>
+                    <div id="dumpstersList" class="space-y-4"></div>
+                </div>
+                
+                <div>
+                    <h3 class="text-xl font-semibold mb-4">Compatible Companies</h3>
+                    <div id="companiesList" class="space-y-4"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([40.4406, -79.9959], 11);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let markers = [];
+        let routes = [];
+
+        document.getElementById('companyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const selectedMaterials = Array.from(document.querySelectorAll('input[name="materials"]:checked'))
+                .map(cb => cb.value);
+
+            const companyData = {
+                company_name: document.getElementById('companyName').value,
+                latitude: parseFloat(document.getElementById('latitude').value),
+                longitude: parseFloat(document.getElementById('longitude').value),
+                raw_materials_needed: selectedMaterials,
+                quantity: parseFloat(document.getElementById('quantity').value)
+            };
+
+            try {
+                const response = await fetch('/api/find-matches', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(companyData)
+                });
+
+                const matches = await response.json();
+                displayMatches(matches, companyData);
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+
+        function displayMatches(matches, companyData) {
+            const resultsDiv = document.getElementById('results');
+            const dumpstersList = document.getElementById('dumpstersList');
+            const companiesList = document.getElementById('companiesList');
+            const predictionDiv = document.getElementById('prediction');
+            const predictionValue = document.getElementById('predictionValue');
+            
+            dumpstersList.innerHTML = '';
+            companiesList.innerHTML = '';
+
+            // Display prediction
+            if (matches.predicted_waste_flow !== null) {
+                predictionDiv.classList.remove('hidden');
+                predictionValue.textContent = `Predicted monthly waste flow: ${matches.predicted_waste_flow.toFixed(2)} tons`;
+            } else {
+                predictionDiv.classList.add('hidden');
+            }
+
+            // Clear previous markers and routes
+            markers.forEach(marker => map.removeLayer(marker));
+            routes.forEach(route => map.removeLayer(route));
+            markers = [];
+            routes = [];
+
+            // Add company marker
+            const companyIcon = L.divIcon({
+                html: '🏢',
+                className: 'company-marker',
+                iconSize: [20, 20]
+            });
+            markers.push(L.marker([companyData.latitude, companyData.longitude], {icon: companyIcon})
+                .bindPopup(`<b>${companyData.company_name}</b>`)
+                .addTo(map));
+
+            // Display dumpsters
+            matches.dumpsters.forEach(match => {
+                const matchDiv = document.createElement('div');
+                matchDiv.className = 'bg-white rounded-lg shadow-md p-4';
+                matchDiv.innerHTML = `
+                    <h4 class="font-semibold">${match.name}</h4>
+                    <p class="text-gray-600">Location: ${match.location}</p>
+                    <p class="text-gray-600">Distance: ${match.distance_km.toFixed(2)} km</p>
+                    <p class="text-gray-600">Hours: ${match.hours}</p>
+                    <p class="text-gray-600">Accepts: ${match.materials.map(m => m.replace('accepts_', '').replace(/_/g, ' ')).join(', ')}</p>
+                    ${match.notes ? `<p class="text-gray-500 text-sm mt-2">Note: ${match.notes}</p>` : ''}
+                `;
+                dumpstersList.appendChild(matchDiv);
+
+                // Add marker
+                const dumpsterIcon = L.divIcon({
+                    html: '🗑️',
+                    className: 'dumpster-marker',
+                    iconSize: [20, 20]
+                });
+                markers.push(L.marker([match.latitude, match.longitude], {icon: dumpsterIcon})
+                    .bindPopup(`<b>${match.name}</b><br>Distance: ${match.distance_km.toFixed(2)} km`)
+                    .addTo(map));
+            });
+
+            // Display companies
+            matches.companies.forEach(match => {
+                const matchDiv = document.createElement('div');
+                matchDiv.className = 'bg-white rounded-lg shadow-md p-4';
+                matchDiv.innerHTML = `
+                    <h4 class="font-semibold">${match.name}</h4>
+                    <p class="text-gray-600">Distance: ${match.distance_km.toFixed(2)} km</p>
+                    <p class="text-gray-600">Available Materials: ${match.materials.map(m => m.replace('accepts_', '').replace(/_/g, ' ')).join(', ')}</p>
+                `;
+                companiesList.appendChild(matchDiv);
+
+                // Add marker
+                const partnerIcon = L.divIcon({
+                    html: '🏭',
+                    className: 'partner-marker',
+                    iconSize: [20, 20]
+                });
+                markers.push(L.marker([match.latitude, match.longitude], {icon: partnerIcon})
+                    .bindPopup(`<b>${match.name}</b><br>Distance: ${match.distance_km.toFixed(2)} km`)
+                    .addTo(map));
+            });
+
+            // Draw routes
+            Object.entries(matches.routes).forEach(([nodeId, coordinates]) => {
+                const route = L.polyline(coordinates, {color: 'blue', weight: 2}).addTo(map);
+                routes.push(route);
+            });
+
+            // Fit map bounds
+            if (markers.length > 0) {
+                const group = new L.featureGroup(markers);
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+
+            resultsDiv.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
